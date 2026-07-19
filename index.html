@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Teachable Machine Image Model</title>
     
-    <!-- นำเข้า Google Fonts เพื่อความโมเดิร์น -->
+    <!-- Google Fonts เพื่อความสวยงาม -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Sarabun:wght@300;400;600&display=swap" rel="stylesheet">
@@ -85,11 +85,16 @@
             box-shadow: inset 0 0 10px rgba(0,0,0,0.1);
             border: 3px solid #fff;
             outline: 1px solid #ddd;
+            position: relative;
         }
 
-        #webcam-container canvas {
-            display: block;
-            border-radius: 8px;
+        /* ปรับให้วิดีโอกล้องพอดีกับกรอบ */
+        #webcam-video {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            /* พลิกกระจกเงา (ถ้าใช้กล้องหน้า) */
+            transform: scaleX(-1); 
         }
 
         #label-container {
@@ -112,6 +117,7 @@
         }
         
         .loading {
+            position: absolute;
             font-size: 14px;
             color: #6c757d;
             font-style: italic;
@@ -125,6 +131,8 @@
     <button type="button" class="btn-start" id="start-btn" onclick="init()">เริ่มเปิดกล้อง</button>
     <div id="webcam-container">
         <span class="loading" id="placeholder-text">ยังไม่ได้เปิดกล้อง</span>
+        <!-- ใช้ HTML5 Video แท้ๆ เพื่อให้เปิดกล้องติดชัวร์ทุกอุปกรณ์ -->
+        <video id="webcam-video" autoplay playsinline muted></video>
     </div>
     <div id="label-container"></div>
 </div>
@@ -132,77 +140,78 @@
 <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@latest/dist/tf.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@teachablemachine/image@latest/dist/teachablemachine-image.min.js"></script>
 <script type="text/javascript">
-    // ลิงก์โมเดลของคุณจากต้นฉบับ
+    // ลิงก์โมเดลของคุณจากต้นฉบับ[cite: 2]
     const URL = "https://teachablemachine.withgoogle.com/models/flTyI50XI/";[cite: 2]
 
-    let model, webcam, labelContainer, maxPredictions;
-    let predictInterval; // ตัวแปรสำหรับคุมเวลาตรวจจับทุกๆ 3 วินาที
+    let model, maxPredictions;
+    let videoElement, predictInterval;
 
-    // โหลดโมเดลและตั้งค่าเว็บแคม
     async function init() {
         const startBtn = document.getElementById("start-btn");
         const placeholderText = document.getElementById("placeholder-text");
+        videoElement = document.getElementById("webcam-video");
         
-        // ปรับ UI ระหว่างโหลด
         startBtn.disabled = true;
         startBtn.innerText = "กำลังโหลดโมเดล...";
-        if(placeholderText) placeholderText.innerText = "กำลังเข้าถึงกล้อง...";
+        if(placeholderText) placeholderText.innerText = "กำลังขอสิทธิ์เปิดกล้อง...";
 
-        const modelURL = URL + "model.json";[cite: 2]
-        const metadataURL = URL + "metadata.json";[cite: 2]
+        try {
+            const modelURL = URL + "model.json";[cite: 2]
+            const metadataURL = URL + "metadata.json";[cite: 2]
 
-        // โหลดโมเดลและเมทาดาตา
-        model = await tmImage.load(modelURL, metadataURL);[cite: 2]
-        maxPredictions = model.getTotalClasses();[cite: 2]
+            // 1. โหลดโมเดล AI[cite: 2]
+            model = await tmImage.load(modelURL, metadataURL);[cite: 2]
+            maxPredictions = model.getTotalClasses();[cite: 2]
 
-        // ตั้งค่าเว็บแคม[cite: 2]
-        const flip = true; 
-        webcam = new tmImage.Webcam(200, 200, flip);[cite: 2]
-        await webcam.setup();[cite: 2]
-        await webcam.play();[cite: 2]
-        
-        // สั่งให้กล้องวาดเฟรมภาพเคลื่อนไหวอย่างต่อเนื่อง เพื่อไม่ให้ภาพกระตุก
-        window.requestAnimationFrame(loop);
+            // 2. เรียกเปิดกล้องด้วยมาตรฐานเว็บ (Native Web API) เสถียรกว่าเดิมมาก
+            const stream = await navigator.mediaDevices.getUserMedia({
+                video: { width: 200, height: 200, facingMode: "user" },
+                audio: false
+            });
+            
+            videoElement.srcObject = stream;
+            
+            // ซ่อนข้อความ Loading เมื่อกล้องพร้อมทำงาน
+            if(placeholderText) placeholderText.style.display = "none";
 
-        // จัดการแทรกกล้องเข้าใน HTML
-        const webcamContainer = document.getElementById("webcam-container");
-        webcamContainer.innerHTML = ""; 
-        webcamContainer.appendChild(webcam.canvas);[cite: 2]
-        
-        labelContainer = document.getElementById("label-container");[cite: 2]
-        labelContainer.innerHTML = ""; 
-        for (let i = 0; i < maxPredictions; i++) {[cite: 2]
-            const row = document.createElement("div");
-            row.className = "label-row";
-            labelContainer.appendChild(row);[cite: 2]
+            // 3. เตรียมพื้นที่แสดงข้อความทำนาย
+            labelContainer = document.getElementById("label-container");[cite: 2]
+            labelContainer.innerHTML = ""; 
+            for (let i = 0; i < maxPredictions; i++) {[cite: 2]
+                const row = document.createElement("div");
+                row.className = "label-row";
+                labelContainer.appendChild(row);[cite: 2]
+            }
+
+            startBtn.innerText = "กำลังตรวจจับทุก 3 วินาที...";
+
+            // 4. สั่งให้โมเดลประมวลผล (Predict) ทุกๆ 3 วินาที (3000 มิลลิวินาที)
+            if(predictInterval) clearInterval(predictInterval);
+            predictInterval = setInterval(predict, 3000);
+            
+            // รันทันทีรอบแรก
+            predict();
+
+        } catch (error) {
+            console.error("เกิดข้อผิดพลาดในการเปิดกล้องหรือโหลดโมเดล:", error);
+            alert("ไม่สามารถเปิดกล้องได้ กรุณาตรวจสอบการอนุญาตสิทธิ์การเข้าถึงกล้อง หรือแน่ใจว่าใช้ลิงก์ HTTPS");
+            startBtn.disabled = false;
+            startBtn.innerText = "ลองใหม่อีกครั้ง";
+            if(placeholderText) placeholderText.innerText = "เปิดกล้องล้มเหลว";
         }
-
-        startBtn.innerText = "ระบบกำลังตรวจจับ...";
-        
-        // เคลียร์ค่าเก่า (ถ้ามี) แล้วตั้งเวลาลูปฟังก์ชันตรวจจับ (predict) ทุกๆ 3000 มิลลิวินาที (3 วินาที)
-        if(predictInterval) clearInterval(predictInterval);
-        predictInterval = setInterval(predict, 3000);
-        
-        // สั่งทำงานครั้งแรกทันทีแบบไม่ต้องรอให้ครบ 3 วินาทีแรก
-        predict();
     }
 
-    async function loop() {
-        webcam.update(); // อัปเดตเฟรมกล้องเพื่อให้ภาพขยับสดๆ ตลอดเวลา[cite: 2]
-        window.requestAnimationFrame(loop);[cite: 2]
-    }
-
-    // ฟังก์ชันตรวจจับภาพและวิเคราะห์ด้วย AI[cite: 2]
+    // ฟังก์ชันตรวจจับภาพทำนายผล
     async function predict() {
-        if (!model || !webcam) return;
+        if (!model || !videoElement) return;
         
-        const prediction = await model.predict(webcam.canvas);[cite: 2]
+        // ส่งวิดีโอตัวที่เป็น HTML5 Video ไปให้ AI วิเคราะห์ตรงๆ 
+        const prediction = await model.predict(videoElement);[cite: 2]
+        
         for (let i = 0; i < maxPredictions; i++) {[cite: 2]
             const className = prediction[i].className;[cite: 2]
-            // แปลงค่าความน่าจะเป็นให้อยู่ในรูปแบบเปอร์เซ็นต์ดูง่าย (เช่น 95%) แทนทศนิยม 0.95
             const probability = (prediction[i].probability * 100).toFixed(0) + "%"; 
             
-            // แสดงผลลัพธ์แบบแยกหัวข้อซ้าย-ขวาอย่างสวยงาม
             labelContainer.childNodes[i].innerHTML = `
                 <strong>${className}</strong>
                 <span>${probability}</span>
