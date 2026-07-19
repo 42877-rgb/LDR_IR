@@ -135,11 +135,10 @@
 <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@latest/dist/tf.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@teachablemachine/image@latest/dist/teachablemachine-image.min.js"></script>
 <script type="text/javascript">
-    // ลิงก์โมเดลดั้งเดิมของคุณจาก Teachable Machine
     const URL = "https://teachablemachine.withgoogle.com/models/flTyI50XI/";[cite: 2]
 
     let model, webcam, labelContainer, maxPredictions;
-    let lastPredictTime = 0; // ตัวแปรสำหรับจับเวลาการทำนายผล
+    let lastPredictTime = 0; // เก็บเวลาในรูปแบบของมิลลิวินาที
 
     async function init() {
         const startBtn = document.getElementById("start-btn");
@@ -157,21 +156,21 @@
             model = await tmImage.load(modelURL, metadataURL);[cite: 2]
             maxPredictions = model.getTotalClasses();[cite: 2]
 
-            // 2. เรียกใช้กล้องผ่านระบบเดิมของ Teachable Machine (แก้ปัญหากล้องเปิดไม่ติด)
+            // 2. ตั้งค่าเว็บแคม
             const flip = true; 
             webcam = new tmImage.Webcam(200, 200, flip);[cite: 2]
             await webcam.setup();[cite: 2]
             await webcam.play();[cite: 2]
             
-            // 3. เริ่มลูปวาดภาพบนหน้าจอ
+            // 3. เริ่มหน้าต่างวาดภาพ
             window.requestAnimationFrame(loop);
 
-            // 4. แสดงผลแคนวาสกล้อง
+            // 4. แสดงผลกล้องบนจอ
             const webcamContainer = document.getElementById("webcam-container");
             webcamContainer.innerHTML = ""; 
             webcamContainer.appendChild(webcam.canvas);[cite: 2]
             
-            // 5. เตรียมแท็กสำหรับแสดงผลข้อความคำนาย
+            // 5. เตรียมพื้นที่โชว์ข้อมูลผลลัพธ์
             labelContainer = document.getElementById("label-container");[cite: 2]
             labelContainer.innerHTML = ""; 
             for (let i = 0; i < maxPredictions; i++) {[cite: 2]
@@ -180,30 +179,36 @@
                 labelContainer.appendChild(row);[cite: 2]
             }
 
-            startBtn.innerText = "กำลังตรวจจับทุก 3 วินาที...";
+            startBtn.innerText = "กำลังทำงาน...";
+            
+            // ตั้งเวลาเริ่มต้นปัจจุบันสำหรับการเริ่มนับถอยหลังรอบแรก
+            lastPredictTime = Date.now();
+            await predict(); // เรียกทำงานทันทีรอบแรก
 
         } catch (error) {
             console.error(error);
-            alert("ไม่สามารถเปิดกล้องได้ กรุณาตรวจสอบสิทธิ์การเข้าถึงกล้อง หรือรันเว็บผ่าน HTTPS");
+            alert("ไม่สามารถเปิดกล้องได้ กรุณาตรวจสอบการอนุญาตกล้อง หรือเปิดใช้ลิงก์ที่เป็น HTTPS");
             startBtn.disabled = false;
             startBtn.innerText = "ลองใหม่อีกครั้ง";
         }
     }
 
-    async function loop(timestamp) {
-        webcam.update(); // อัปเดตเฟรมภาพต่อเนื่องเพื่อให้ภาพไหลลื่น ไม่กระตุก
-        
-        // ตรวจสอบว่าเวลาผ่านไปครบ 3000 มิลลิวินาที (3 วินาที) หรือยัง
-        if (!lastPredictTime || timestamp - lastPredictTime >= 3000) {
-            lastPredictTime = timestamp; // บันทึกเวลาล่าสุดที่ประมวลผล
-            await predict(); // เรียกฟังก์ชันวิเคราะห์วัตถุ
+    async function loop() {
+        if (webcam && webcam.canvas) {
+            webcam.update(); // อัปเดตเฟรมภาพต่อเนื่องเพื่อให้ภาพไหลลื่นสดใหม่ตลอดเวลา[cite: 2]
+            
+            const currentTime = Date.now();
+            // เช็กว่าเวลาปัจจุบัน ห่างจากเวลาทำนายล่าสุดเกิน 3000 มิลลิวินาที (3 วินาที) แล้วหรือยัง
+            if (currentTime - lastPredictTime >= 3000) {
+                lastPredictTime = currentTime; // อัปเดตเวลาทำนายล่าสุด
+                await predict(); // ส่งผลไปให้ AI ตรวจจับ
+            }
         }
-        
         window.requestAnimationFrame(loop);[cite: 2]
     }
 
     async function predict() {
-        if (!model || !webcam) return;
+        if (!model || !webcam || !webcam.canvas) return;
         
         const prediction = await model.predict(webcam.canvas);[cite: 2]
         for (let i = 0; i < maxPredictions; i++) {[cite: 2]
